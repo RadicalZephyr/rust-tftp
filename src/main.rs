@@ -30,6 +30,13 @@ impl RequestParts {
     }
 }
 
+enum Packet {
+    ReadRequest(RequestParts),
+    WriteRequest(RequestParts),
+    Data { block_num: usize, data: Vec<u8> },
+    Ack(usize),
+}
+
 fn is_zero_byte(b: &u8) -> bool {
     *b == b'\0'
 }
@@ -70,13 +77,6 @@ fn parse_error_body(buf: &mut BytesMut) -> Result<Packet, Error> {
     let code = split_u16(buf);
     let message = split_string(buf)?;
     Err(Error::ClientErr { code, message })
-}
-
-enum Packet {
-    ReadRequest(RequestParts),
-    WriteRequest(RequestParts),
-    Data { block_num: usize, data: Vec<u8> },
-    Ack(usize),
 }
 
 struct Tftp {}
@@ -121,21 +121,6 @@ struct Tid(u16);
 impl Tid {
     pub fn new(val: u16) -> Tid {
         Tid(val)
-    }
-}
-
-trait Request {
-    fn tid(&self) -> Tid;
-}
-
-struct ReadRequest {
-    tid: Tid,
-
-}
-
-impl Request for ReadRequest {
-    fn tid(&self) -> Tid {
-        self.tid.clone()
     }
 }
 
