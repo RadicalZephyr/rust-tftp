@@ -102,6 +102,11 @@ impl Decoder for Tftp {
             _ => Err(Error::UnknownOpcode),
         };
 
+        // Make sure we clear the buf so even if parsing didn't empty
+        // it, the next packet will start on the opcode bytes.  This
+        // also guards against a malformed dgram that has extra bytes.
+        buf.clear();
+
         Ok(Some(packet))
     }
 }
