@@ -1,6 +1,11 @@
+cargo-features = ["edition"]
+
 [package]
 name = "tftp"
 version = "0.1.0"
 authors = ["Geoff Shannon <geoffpshannon@gmail.com>"]
+edition = "2018"
 
 [dependencies]
+tokio-async-await = "0.1.0"
+tokio = { version = "0.1.0", features = ["async-await-preview"] }
