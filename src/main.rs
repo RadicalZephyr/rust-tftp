@@ -11,12 +11,14 @@ use bytes::{Buf, BytesMut, IntoBuf};
 
 use tokio::net::{UdpFramed, UdpSocket};
 // use tokio::prelude::*;
+use tokio::prelude::future::Either;
 use tokio_io::codec::{/*Encoder, */Decoder};
 
 enum Error {
+    ClientErr { code: u16, message: String },
     MissingStringDelimiter,
     UnknownOpcode,
-    ClientErr { code: u16, message: String }
+    UnexpectedPacket(Either<Request, Data>),
 }
 
 struct RequestParts {
@@ -30,11 +32,35 @@ impl RequestParts {
     }
 }
 
-enum Packet {
-    ReadRequest(RequestParts),
-    WriteRequest(RequestParts),
+enum Request {
+    Read(RequestParts),
+    Write(RequestParts),
+}
+
+enum Data {
     Data { block_num: usize, data: Vec<u8> },
     Ack(usize),
+}
+
+enum Packet {
+    Request(Request),
+    Data(Data),
+}
+
+impl Packet {
+    pub fn into_request(self) -> Result<Request, Error> {
+        match self {
+            Packet::Request(request) => Ok(request),
+            Packet::Data(data) => Err(Error::UnexpectedPacket(Either::B(data))),
+        }
+    }
+
+    pub fn into_data(self) -> Result<Data, Error> {
+        match self {
+            Packet::Request(request) => Err(Error::UnexpectedPacket(Either::A(request))),
+            Packet::Data(data) => Ok(data),
+        }
+    }
 }
 
 fn is_zero_byte(b: &u8) -> bool {
@@ -67,12 +93,12 @@ fn parse_request_body(buf: &mut BytesMut) -> Result<RequestParts, Error> {
 fn parse_data_body(buf: &mut BytesMut) -> Result<Packet, Error> {
     let block_num = split_u16(buf) as usize;
     let data = buf.take().to_vec();
-    Ok(Packet::Data { block_num, data })
+    Ok(Packet::Data(Data::Data { block_num, data }))
 }
 
 fn parse_ack_body(buf: &mut BytesMut) -> Result<Packet, Error> {
     let block_num = split_u16(buf);
-    Ok(Packet::Ack(block_num as usize))
+    Ok(Packet::Data(Data::Ack(block_num as usize)))
 }
 
 fn parse_error_body(buf: &mut BytesMut) -> Result<Packet, Error> {
@@ -96,8 +122,8 @@ impl Decoder for Tftp {
         assert_eq!(0, opcode.get_u8());
 
         let packet = match opcode.get_u8() {
-            1 => parse_request_body(buf).map(Packet::ReadRequest),
-            2 => parse_request_body(buf).map(Packet::WriteRequest),
+            1 => parse_request_body(buf).map(|parts| Packet::Request(Request::Read(parts))),
+            2 => parse_request_body(buf).map(|parts| Packet::Request(Request::Write(parts))),
             3 => parse_data_body(buf),
             4 => parse_ack_body(buf),
             5 => parse_error_body(buf),
