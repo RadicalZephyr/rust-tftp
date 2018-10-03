@@ -107,14 +107,22 @@ fn parse_error_body(buf: &mut BytesMut) -> Result<Packet, Error> {
     Err(Error::ClientErr { code, message })
 }
 
-struct Tftp {}
+struct Tftp {
+    received_end: bool,
+}
+
+impl Tftp {
+    pub fn new() -> Tftp {
+        Tftp { received_end: false }
+    }
+}
 
 impl Decoder for Tftp {
     type Item = Result<Packet, Error>;
     type Error = io::Error;
 
     fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, io::Error> {
-        if buf.len() <= 2 {
+        if buf.len() <= 2 && self.received_end {
             return Ok(None);
         }
 
@@ -122,9 +130,15 @@ impl Decoder for Tftp {
         assert_eq!(0, opcode.get_u8());
 
         let packet = match opcode.get_u8() {
-            1 => parse_request_body(buf).map(|parts| Packet::Request(Request::Read(parts))),
-            2 => parse_request_body(buf).map(|parts| Packet::Request(Request::Write(parts))),
-            3 => parse_data_body(buf),
+            1 => parse_request_body(buf).map(|parts| {
+                Packet::Request(Request::Read(parts))
+            }),
+            2 => parse_request_body(buf).map(|parts| {
+                Packet::Request(Request::Write(parts))
+            }),
+            3 => parse_data_body(buf).map(|data| {
+                data
+            }),
             4 => parse_ack_body(buf),
             5 => parse_error_body(buf),
             _ => Err(Error::UnknownOpcode),
@@ -142,7 +156,7 @@ impl Decoder for Tftp {
 fn main() {
     let addr: SocketAddr = "0.0.0.0:69".parse().unwrap();
     let listener = UdpSocket::bind(&addr).unwrap();
-    let _stream = UdpFramed::new(listener, Tftp {});
+    let _stream = UdpFramed::new(listener, Tftp::new());
 
     tokio::run_async(async {
     });
