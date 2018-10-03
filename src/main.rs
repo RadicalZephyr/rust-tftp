@@ -3,37 +3,58 @@
 #[macro_use]
 extern crate tokio;
 
+use std::io;
 use std::net::SocketAddr;
 
-use tokio::net::{TcpListener, TcpStream};
+use bytes::{BytesMut, BufMut};
+
+use tokio::net::{UdpFramed, UdpSocket};
 use tokio::prelude::*;
+use tokio_io::codec::{Encoder, Decoder};
+
+struct Error {}
+
+struct Tftp {}
+
+impl Decoder for Tftp {
+    type Item = Box<dyn Request>;
+    type Error = io::Error;
+
+    fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, io::Error> {
+        Ok(Some(Box::new(ReadRequest { tid: Tid(10) })))
+    }
+}
 
 fn main() {
-    let addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
-    let listener = TcpListener::bind(&addr).unwrap();
+    let addr: SocketAddr = "0.0.0.0:69".parse().unwrap();
+    let listener = UdpSocket::bind(&addr).unwrap();
+//    let stream = UdpFramed::new(listener, );
 
     tokio::run_async(async {
-        let mut incoming = listener.incoming();
 
-        while let Some(stream) = await!(incoming.next()) {
-            let stream = stream.unwrap();
-            handle(stream);
-        }
     });
 }
 
-fn handle(mut stream: TcpStream) {
-    tokio::spawn_async(async move {
-        let mut buf = [0; 1024];
+#[derive(Clone)]
+struct Tid(usize);
 
-        loop {
-            match await!(stream.read_async(&mut buf)).unwrap() {
-                0 => break, // Socket closed
-                n => {
-                    // Send the data back
-                    await!(stream.write_all_async(&buf[0..n])).unwrap();
-                }
-            }
-        }
-    });
+impl Tid {
+    pub fn new(val: usize) -> Tid {
+        Tid(val)
+    }
+}
+
+trait Request {
+    fn tid(&self) -> Tid;
+}
+
+struct ReadRequest {
+    tid: Tid,
+
+}
+
+impl Request for ReadRequest {
+    fn tid(&self) -> Tid {
+        self.tid.clone()
+    }
 }
