@@ -14,6 +14,7 @@ use tokio::net::{UdpFramed, UdpSocket};
 use tokio::prelude::future::Either;
 use tokio_io::codec::{/*Encoder, */Decoder};
 
+#[derive(Debug)]
 enum Error {
     ClientErr { code: u16, message: String },
     MissingStringDelimiter,
@@ -21,6 +22,7 @@ enum Error {
     UnexpectedPacket(Either<Request, Data>),
 }
 
+#[derive(Debug,PartialEq)]
 struct RequestParts {
     filename: String,
     mode: String,
@@ -32,21 +34,25 @@ impl RequestParts {
     }
 }
 
+#[derive(Debug,PartialEq)]
 enum Request {
     Read(RequestParts),
     Write(RequestParts),
 }
 
+#[derive(Debug,PartialEq)]
 struct Block {
     block_num: usize,
     bytes: Vec<u8>,
 }
 
+#[derive(Debug,PartialEq)]
 enum Data {
     Data(Block),
     Ack(usize),
 }
 
+#[derive(Debug,PartialEq)]
 enum Packet {
     Request(Request),
     Data(Data),
@@ -95,7 +101,7 @@ impl Packet {
         // also guards against a malformed dgram that has extra bytes.
         buf.clear();
 
-        None
+        Some(packet)
     }
 }
 
@@ -106,7 +112,7 @@ fn is_zero_byte(b: &u8) -> bool {
 fn split_u16(buf: &mut BytesMut) -> u16 {
     assert!(buf.len() >= 2);
     let mut u16_buf = buf.split_to(2).into_buf();
-    u16_buf.get_u16_le() // TODO: figure out if this is the right byte order
+    u16_buf.get_u16_be() // TODO: figure out if this is the right byte order
 }
 
 fn split_string(buf: &mut BytesMut) -> Result<String, Error> {
@@ -182,8 +188,82 @@ impl Tid {
 
 #[cfg(test)]
 mod test {
+    use super::*;
+
     #[test]
     fn test_decode_ack() {
+        let mut buf = BytesMut::from(&[0, 4, 0, 0][..]);
+        match Packet::from_bytes(&mut buf) {
+            None => panic!("received None"),
+            Some(e @ Err(_)) => { e.unwrap(); unreachable!() },
+            Some(Ok(packet)) => {
+                assert_eq!(packet, Packet::Data(Data::Ack(0)))
+            }
+        }
 
     }
+
+    #[test]
+    fn test_decode_data() {
+        let mut buf = BytesMut::from(&[0, 3, 0, 1, 11, 12, 13][..]);
+        match Packet::from_bytes(&mut buf) {
+            None => panic!("received None"),
+            Some(e @ Err(_)) => { e.unwrap(); unreachable!() },
+            Some(Ok(packet)) => {
+                let block_num = 1;
+                let bytes = vec![11, 12, 13];
+                assert_eq!(packet, Packet::Data(Data::Data(Block { block_num, bytes })))
+            }
+        }
+    }
+
+    #[test]
+    fn test_decode_error() {
+        let mut buf = BytesMut::from(&[0, 5, 0, 3, 66, 97, 100, 0][..]);
+        match Packet::from_bytes(&mut buf) {
+            None => panic!("received None"),
+            Some(Ok(packet)) => panic!("expected error, got {:?}", packet),
+            Some(Err(e)) => {
+                match e {
+                    Error::ClientErr { code, message } => {
+                        assert_eq!(code, 3);
+                        assert_eq!(message, String::from("Bad"));
+                    },
+                    e => panic!("got unexpected error: {:?}"),
+                }
+            },
+        }
+    }
+
+    #[test]
+    fn test_decode_read_request() {
+        let mut buf = BytesMut::from(&[0, 1, 70, 111, 111, 0, 66, 97, 114, 0][..]);
+        match Packet::from_bytes(&mut buf) {
+            None => panic!("received None"),
+            Some(e @ Err(_)) => { e.unwrap(); unreachable!() },
+            Some(Ok(packet)) => {
+                let filename = "Foo".into();
+                let mode = "Bar".into();
+                let parts = RequestParts { filename, mode };
+                assert_eq!(packet, Packet::Request(Request::Read(parts)))
+            }
+        }
+    }
+
+    #[test]
+    fn test_decode_write_request() {
+        let mut buf = BytesMut::from(&[0, 2, 70, 111, 111, 0, 66, 97, 114, 0][..]);
+        match Packet::from_bytes(&mut buf) {
+            None => panic!("received None"),
+            Some(e @ Err(_)) => { e.unwrap(); unreachable!() },
+            Some(Ok(packet)) => {
+                let filename = "Foo".into();
+                let mode = "Bar".into();
+                let parts = RequestParts { filename, mode };
+                assert_eq!(packet, Packet::Request(Request::Write(parts)))
+            }
+        }
+
+    }
+
 }
