@@ -39,7 +39,7 @@ enum Request {
 
 struct Block {
     block_num: usize,
-    data: Vec<u8>,
+    bytes: Vec<u8>,
 }
 
 enum Data {
@@ -97,8 +97,8 @@ fn parse_request_body(buf: &mut BytesMut) -> Result<RequestParts, Error> {
 
 fn parse_data_body(buf: &mut BytesMut) -> Result<Block, Error> {
     let block_num = split_u16(buf) as usize;
-    let data = buf.take().to_vec();
-    Ok(Block { block_num, data })
+    let bytes = buf.take().to_vec();
+    Ok(Block { block_num, bytes })
 }
 
 fn parse_ack_body(buf: &mut BytesMut) -> Result<Packet, Error> {
@@ -127,7 +127,8 @@ impl Decoder for Tftp {
     type Error = io::Error;
 
     fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, io::Error> {
-        if buf.len() <= 2 && self.received_end {
+        let len = buf.len();
+        if (len == 0 && self.received_end) || len <= 2 {
             return Ok(None);
         }
 
@@ -141,8 +142,11 @@ impl Decoder for Tftp {
             2 => parse_request_body(buf).map(|parts| {
                 Packet::Request(Request::Write(parts))
             }),
-            3 => parse_data_body(buf).map(|data| {
-                Packet::Data(Data::Data(data))
+            3 => parse_data_body(buf).map(|block| {
+                if block.bytes.len() < 512 {
+                    self.received_end = true;
+                }
+                Packet::Data(Data::Data(block))
             }),
             4 => parse_ack_body(buf),
             5 => parse_error_body(buf),
