@@ -37,8 +37,13 @@ enum Request {
     Write(RequestParts),
 }
 
+struct Block {
+    block_num: usize,
+    data: Vec<u8>,
+}
+
 enum Data {
-    Data { block_num: usize, data: Vec<u8> },
+    Data(Block),
     Ack(usize),
 }
 
@@ -90,10 +95,10 @@ fn parse_request_body(buf: &mut BytesMut) -> Result<RequestParts, Error> {
     Ok(RequestParts { filename, mode })
 }
 
-fn parse_data_body(buf: &mut BytesMut) -> Result<Packet, Error> {
+fn parse_data_body(buf: &mut BytesMut) -> Result<Block, Error> {
     let block_num = split_u16(buf) as usize;
     let data = buf.take().to_vec();
-    Ok(Packet::Data(Data::Data { block_num, data }))
+    Ok(Block { block_num, data })
 }
 
 fn parse_ack_body(buf: &mut BytesMut) -> Result<Packet, Error> {
@@ -137,7 +142,7 @@ impl Decoder for Tftp {
                 Packet::Request(Request::Write(parts))
             }),
             3 => parse_data_body(buf).map(|data| {
-                data
+                Packet::Data(Data::Data(data))
             }),
             4 => parse_ack_body(buf),
             5 => parse_error_body(buf),
