@@ -67,8 +67,19 @@ fn parse_request_body(buf: &mut BytesMut) -> Result<RequestParts, Error> {
     })
 }
 
+fn split_block_num(buf: &mut BytesMut) -> u16 {
+    assert!(buf.len() >= 2);
+    let mut block_num_buf = buf.split_to(2).into_buf();
+    block_num_buf.get_u16_le() // TODO: figure out if this is the right byte order
+}
+
 fn parse_data_body(buf: &mut BytesMut) -> Result<Packet, Error> {
     Err(Error::UnknownOpcode)
+}
+
+fn parse_ack_body(buf: &mut BytesMut) -> Result<Packet, Error> {
+    let block_num = split_block_num(buf);
+    Ok(Packet::Ack(block_num as usize))
 }
 
 fn parse_error_body(buf: &mut BytesMut) -> Result<Packet, Error> {
@@ -79,7 +90,7 @@ enum Packet {
     ReadRequest(RequestParts),
     WriteRequest(RequestParts),
     Data { block_num: usize, data: Vec<u8> },
-    Ack,
+    Ack(usize),
 }
 
 struct Tftp {}
@@ -100,7 +111,7 @@ impl Decoder for Tftp {
             1 => parse_request_body(buf).map(|parts| Packet::ReadRequest(parts)),
             2 => parse_request_body(buf).map(|parts| Packet::WriteRequest(parts)),
             3 => parse_data_body(buf),
-            4 => Ok(Packet::Ack),
+            4 => parse_ack_body(buf),
             5 => parse_error_body(buf),
             _ => Err(Error::UnknownOpcode),
         };
@@ -139,5 +150,13 @@ struct ReadRequest {
 impl Request for ReadRequest {
     fn tid(&self) -> Tid {
         self.tid.clone()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    #[test]
+    fn test_decode_ack() {
+
     }
 }
