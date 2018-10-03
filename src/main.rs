@@ -48,8 +48,10 @@ fn split_u16(buf: &mut BytesMut) -> u16 {
 }
 
 fn split_string(buf: &mut BytesMut) -> Result<String, Error> {
-    let zero_index = buf.as_ref().iter().position(is_zero_byte);
-    let zero_index = zero_index.ok_or(Error::MissingStringDelimiter)?;
+    let zero_index = buf.as_ref()
+        .iter()
+        .position(is_zero_byte)
+        .ok_or(Error::MissingStringDelimiter)?;
     let str_buf = buf.split_to(zero_index);
     buf.advance(1);
 
