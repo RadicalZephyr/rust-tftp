@@ -67,24 +67,25 @@ fn parse_request_body(buf: &mut BytesMut) -> Result<RequestParts, Error> {
     })
 }
 
-fn split_block_num(buf: &mut BytesMut) -> u16 {
+fn split_u16(buf: &mut BytesMut) -> u16 {
     assert!(buf.len() >= 2);
-    let mut block_num_buf = buf.split_to(2).into_buf();
-    block_num_buf.get_u16_le() // TODO: figure out if this is the right byte order
+    let mut u16_buf = buf.split_to(2).into_buf();
+    u16_buf.get_u16_le() // TODO: figure out if this is the right byte order
 }
 
 fn parse_data_body(buf: &mut BytesMut) -> Result<Packet, Error> {
-    let block_num = split_block_num(buf) as usize;
+    let block_num = split_u16(buf) as usize;
     let data = buf.take().to_vec();
     Ok(Packet::Data { block_num, data })
 }
 
 fn parse_ack_body(buf: &mut BytesMut) -> Result<Packet, Error> {
-    let block_num = split_block_num(buf);
+    let block_num = split_u16(buf);
     Ok(Packet::Ack(block_num as usize))
 }
 
 fn parse_error_body(buf: &mut BytesMut) -> Result<Packet, Error> {
+    let error_code = split_u16(buf);
     Err(Error::UnknownOpcode)
 }
 
