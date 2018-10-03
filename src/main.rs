@@ -74,7 +74,9 @@ fn split_block_num(buf: &mut BytesMut) -> u16 {
 }
 
 fn parse_data_body(buf: &mut BytesMut) -> Result<Packet, Error> {
-    Err(Error::UnknownOpcode)
+    let block_num = split_block_num(buf) as usize;
+    let data = buf.take().to_vec();
+    Ok(Packet::Data { block_num, data })
 }
 
 fn parse_ack_body(buf: &mut BytesMut) -> Result<Packet, Error> {
