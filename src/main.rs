@@ -93,8 +93,8 @@ impl Decoder for Tftp {
         assert_eq!(0, opcode.get_u8());
 
         let packet = match opcode.get_u8() {
-            1 => parse_request_body(buf).map(|parts| Packet::ReadRequest(parts)),
-            2 => parse_request_body(buf).map(|parts| Packet::WriteRequest(parts)),
+            1 => parse_request_body(buf).map(Packet::ReadRequest),
+            2 => parse_request_body(buf).map(Packet::WriteRequest),
             3 => parse_data_body(buf),
             4 => parse_ack_body(buf),
             5 => parse_error_body(buf),
