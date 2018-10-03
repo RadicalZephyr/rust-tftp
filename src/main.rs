@@ -16,6 +16,7 @@ use tokio_io::codec::{/*Encoder, */Decoder};
 enum Error {
     MissingStringDelimiter,
     UnknownOpcode,
+    ClientErr { code: u16, message: String }
 }
 
 struct RequestParts {
@@ -51,7 +52,6 @@ fn split_string(buf: &mut BytesMut) -> Result<String, Error> {
 fn parse_request_body(buf: &mut BytesMut) -> Result<RequestParts, Error> {
     let filename = split_string(buf)?;
     let mode = split_string(buf)?;
-
     Ok(RequestParts { filename, mode })
 }
 
@@ -67,8 +67,9 @@ fn parse_ack_body(buf: &mut BytesMut) -> Result<Packet, Error> {
 }
 
 fn parse_error_body(buf: &mut BytesMut) -> Result<Packet, Error> {
-    let error_code = split_u16(buf);
-    Err(Error::UnknownOpcode)
+    let code = split_u16(buf);
+    let message = split_string(buf)?;
+    Err(Error::ClientErr { code, message })
 }
 
 enum Packet {
