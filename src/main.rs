@@ -15,6 +15,7 @@ use tokio_io::codec::{/*Encoder, */Decoder};
 
 enum Error {
     MissingStringDelimiters,
+    UnknownOpcode,
 }
 
 struct RequestParts {
@@ -58,34 +59,53 @@ fn parse_request_body(buf: &mut BytesMut) -> Result<RequestParts, Error> {
     let filename_buf = buf.split_to(i);
     let mode_buf = buf.split_to(j-i);
 
+    buf.advance(1); // drop trailing zero byte
+
     Ok(RequestParts {
         filename: String::from_utf8_lossy(&filename_buf).to_string(),
         mode: String::from_utf8_lossy(&mode_buf).to_string(),
     })
 }
 
+fn parse_data_body(buf: &mut BytesMut) -> Result<Packet, Error> {
+    Err(Error::UnknownOpcode)
+}
+
+fn parse_error_body(buf: &mut BytesMut) -> Result<Packet, Error> {
+    Err(Error::UnknownOpcode)
+}
+
+enum Packet {
+    ReadRequest(RequestParts),
+    WriteRequest(RequestParts),
+    Data { block_num: usize, data: Vec<u8> },
+    Ack,
+}
+
 struct Tftp {}
 
 impl Decoder for Tftp {
-    type Item = Box<dyn Request>;
+    type Item = Result<Packet, Error>;
     type Error = io::Error;
 
     fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, io::Error> {
-        assert!(buf.len() > 2);
+        if buf.len() <= 2 {
+            return Ok(None);
+        }
+
         let mut opcode = buf.split_to(2).into_buf();
         assert_eq!(0, opcode.get_u8());
 
-        match opcode.get_u8() {
-            0 => (),
-            1 => (),
-            2 => (),
-            3 => (),
-            4 => (),
-            5 => (),
-            _ => (),
-        }
+        let packet = match opcode.get_u8() {
+            1 => parse_request_body(buf).map(|parts| Packet::ReadRequest(parts)),
+            2 => parse_request_body(buf).map(|parts| Packet::WriteRequest(parts)),
+            3 => parse_data_body(buf),
+            4 => Ok(Packet::Ack),
+            5 => parse_error_body(buf),
+            _ => Err(Error::UnknownOpcode),
+        };
 
-        Ok(Some(Box::new(ReadRequest { tid: Tid(10) })))
+        Ok(Some(packet))
     }
 }
 
