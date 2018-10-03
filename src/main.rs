@@ -66,6 +66,37 @@ impl Packet {
             Packet::Data(data) => Ok(data),
         }
     }
+
+    pub fn from_bytes(buf: &mut BytesMut) -> Option<Result<Packet, Error>> {
+        if buf.len() <= 2 {
+            return None;
+        }
+
+        let mut opcode = buf.split_to(2).into_buf();
+        assert_eq!(0, opcode.get_u8());
+
+        let packet = match opcode.get_u8() {
+            1 => parse_request_body(buf).map(|parts| {
+                Packet::Request(Request::Read(parts))
+            }),
+            2 => parse_request_body(buf).map(|parts| {
+                Packet::Request(Request::Write(parts))
+            }),
+            3 => parse_data_body(buf).map(|block| {
+                Packet::Data(Data::Data(block))
+            }),
+            4 => parse_ack_body(buf),
+            5 => parse_error_body(buf),
+            _ => Err(Error::UnknownOpcode),
+        };
+
+        // Make sure we clear the buf so even if parsing didn't empty
+        // it, the next packet will start on the opcode bytes.  This
+        // also guards against a malformed dgram that has extra bytes.
+        buf.clear();
+
+        None
+    }
 }
 
 fn is_zero_byte(b: &u8) -> bool {
@@ -127,38 +158,7 @@ impl Decoder for Tftp {
     type Error = io::Error;
 
     fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, io::Error> {
-        let len = buf.len();
-        if (len == 0 && self.received_end) || len <= 2 {
-            return Ok(None);
-        }
-
-        let mut opcode = buf.split_to(2).into_buf();
-        assert_eq!(0, opcode.get_u8());
-
-        let packet = match opcode.get_u8() {
-            1 => parse_request_body(buf).map(|parts| {
-                Packet::Request(Request::Read(parts))
-            }),
-            2 => parse_request_body(buf).map(|parts| {
-                Packet::Request(Request::Write(parts))
-            }),
-            3 => parse_data_body(buf).map(|block| {
-                if block.bytes.len() < 512 {
-                    self.received_end = true;
-                }
-                Packet::Data(Data::Data(block))
-            }),
-            4 => parse_ack_body(buf),
-            5 => parse_error_body(buf),
-            _ => Err(Error::UnknownOpcode),
-        };
-
-        // Make sure we clear the buf so even if parsing didn't empty
-        // it, the next packet will start on the opcode bytes.  This
-        // also guards against a malformed dgram that has extra bytes.
-        buf.clear();
-
-        Ok(Some(packet))
+        Ok(Packet::from_bytes(buf))
     }
 }
 
