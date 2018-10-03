@@ -14,7 +14,7 @@ use tokio::net::{UdpFramed, UdpSocket};
 use tokio_io::codec::{/*Encoder, */Decoder};
 
 enum Error {
-    MissingStringDelimiters,
+    MissingStringDelimiter,
     UnknownOpcode,
 }
 
@@ -33,44 +33,26 @@ fn is_zero_byte(b: &u8) -> bool {
     *b == b'\0'
 }
 
-fn zero_indices(buf: &mut BytesMut) -> Result<(usize, usize), Error> {
-    let buf = buf.as_ref();
-    let first_zero_index = buf.iter()
-        .position(is_zero_byte);
-    let last_zero_index = buf.iter()
-        .rposition(is_zero_byte);
-
-    match (first_zero_index, last_zero_index) {
-        (None, None) |
-        (Some(_), None) |
-        (None, Some(_)) => Err(Error::MissingStringDelimiters),
-        (Some(i), Some(j)) => {
-            if i != j {
-                Ok((i, j))
-            } else {
-                Err(Error::MissingStringDelimiters)
-            }
-        }
-    }
-}
-
-fn parse_request_body(buf: &mut BytesMut) -> Result<RequestParts, Error> {
-    let (i, j) = zero_indices(buf)?;
-    let filename_buf = buf.split_to(i);
-    let mode_buf = buf.split_to(j-i);
-
-    buf.advance(1); // drop trailing zero byte
-
-    Ok(RequestParts {
-        filename: String::from_utf8_lossy(&filename_buf).to_string(),
-        mode: String::from_utf8_lossy(&mode_buf).to_string(),
-    })
-}
-
 fn split_u16(buf: &mut BytesMut) -> u16 {
     assert!(buf.len() >= 2);
     let mut u16_buf = buf.split_to(2).into_buf();
     u16_buf.get_u16_le() // TODO: figure out if this is the right byte order
+}
+
+fn split_string(buf: &mut BytesMut) -> Result<String, Error> {
+    let zero_index = buf.as_ref().iter().position(is_zero_byte);
+    let zero_index = zero_index.ok_or(Error::MissingStringDelimiter)?;
+    let str_buf = buf.split_to(zero_index);
+    buf.advance(1);
+
+    Ok(String::from_utf8_lossy(&str_buf).to_string())
+}
+
+fn parse_request_body(buf: &mut BytesMut) -> Result<RequestParts, Error> {
+    let filename = split_string(buf)?;
+    let mode = split_string(buf)?;
+
+    Ok(RequestParts { filename, mode })
 }
 
 fn parse_data_body(buf: &mut BytesMut) -> Result<Packet, Error> {
