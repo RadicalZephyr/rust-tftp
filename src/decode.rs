@@ -17,22 +17,27 @@ pub enum Error {
     UnexpectedPacket(Either<Request, Data>),
 }
 
-#[derive(Debug,PartialEq)]
-pub struct RequestParts {
+#[derive(Clone, Debug,PartialEq)]
+pub enum AccessType {
+    Read,
+    Write,
+}
+
+#[derive(Clone, Debug,PartialEq)]
+pub struct Request {
+    r#type: AccessType,
     filename: String,
     mode: String,
 }
 
-impl RequestParts {
-    pub fn new(filename: String, mode: String) -> RequestParts {
-        RequestParts { filename, mode }
+impl Request {
+    pub fn new(r#type: AccessType, filename: String, mode: String) -> Request {
+        Request { r#type, filename, mode }
     }
-}
 
-#[derive(Debug,PartialEq)]
-pub enum Request {
-    Read(RequestParts),
-    Write(RequestParts),
+    pub fn r#type(&self) -> AccessType {
+        self.r#type.clone()
+    }
 }
 
 #[derive(Debug,PartialEq)]
@@ -77,11 +82,11 @@ impl Packet {
         assert_eq!(0, opcode.get_u8());
 
         let packet = match opcode.get_u8() {
-            1 => parse_request_body(buf).map(|parts| {
-                Packet::Request(Request::Read(parts))
+            1 => parse_request_body(AccessType::Read, buf).map(|request| {
+                Packet::Request(request)
             }),
-            2 => parse_request_body(buf).map(|parts| {
-                Packet::Request(Request::Write(parts))
+            2 => parse_request_body(AccessType::Write, buf).map(|request| {
+                Packet::Request(request)
             }),
             3 => parse_data_body(buf).map(|block| {
                 Packet::Data(Data::Data(block))
@@ -117,10 +122,10 @@ fn split_string(buf: &mut BytesMut) -> Result<String> {
     Ok(String::from_utf8_lossy(&str_buf).to_string())
 }
 
-fn parse_request_body(buf: &mut BytesMut) -> Result<RequestParts> {
+fn parse_request_body(r#type: AccessType, buf: &mut BytesMut) -> Result<Request> {
     let filename = split_string(buf)?;
     let mode = split_string(buf)?;
-    Ok(RequestParts { filename, mode })
+    Ok(Request { r#type, filename, mode })
 }
 
 fn parse_data_body(buf: &mut BytesMut) -> Result<Block> {
@@ -253,10 +258,11 @@ mod test {
             None => panic!("received None"),
             Some(e @ Err(_)) => { e.unwrap(); unreachable!() },
             Some(Ok(packet)) => {
+                let r#type = AccessType::Read;
                 let filename = "Foo".into();
                 let mode = "Bar".into();
-                let parts = RequestParts { filename, mode };
-                assert_eq!(packet, Packet::Request(Request::Read(parts)))
+                let request = Request { r#type, filename, mode };
+                assert_eq!(packet, Packet::Request(request));
             }
         }
     }
@@ -268,12 +274,12 @@ mod test {
             None => panic!("received None"),
             Some(e @ Err(_)) => { e.unwrap(); unreachable!() },
             Some(Ok(packet)) => {
+                let r#type = AccessType::Write;
                 let filename = "Foo".into();
                 let mode = "Bar".into();
-                let parts = RequestParts { filename, mode };
-                assert_eq!(packet, Packet::Request(Request::Write(parts)))
+                let request = Request { r#type, filename, mode };
+                assert_eq!(packet, Packet::Request(request));
             }
         }
-
     }
 }

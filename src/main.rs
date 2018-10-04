@@ -9,7 +9,7 @@ use tokio::await;
 use tokio::net::{UdpFramed, UdpSocket};
 use tokio::prelude::*;
 
-use tftp::{TftpServer, Request};
+use tftp::TftpServer;
 
 #[derive(Clone, Debug, PartialEq)]
 struct Tid(u16);
@@ -36,10 +36,6 @@ fn main() {
                 Err(e) => error!("{:?}", e),
                 Ok(request) => {
                     info!("{:?}", request);
-                    match request {
-                        Request::Read(parts) => (),
-                        Request::Write(parts) => (),
-                    }
                 }
             }
         }
