@@ -164,10 +164,22 @@ impl Decoder for TftpClient {
     type Error = io::Error;
 
     fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, io::Error> {
+        if self.received_end {
+            return Ok(None);
+        }
+
         match Packet::from_bytes(buf) {
             None => Ok(None),
             Some(res) => {
-                let data = res.and_then(|packet| Packet::into_data(packet));
+                let data = res.and_then(|packet| {
+                    let data_res: Result<Data, Error> = Packet::into_data(packet);
+                    data_res.map(|data: Data| {
+                        if let Data::Data(block) = &data {
+                            self.received_end = true;
+                        }
+                        data
+                    })
+                });
                 Ok(Some(data))
             }
         }
@@ -291,5 +303,4 @@ mod test {
         }
 
     }
-
 }
