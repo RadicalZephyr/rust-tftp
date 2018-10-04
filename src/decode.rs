@@ -1,4 +1,5 @@
-use std::{io, result};
+use std::io;
+use std::result::Result as StdResult;
 
 use bytes::{Buf, BytesMut, IntoBuf};
 
@@ -6,7 +7,7 @@ use bytes::{Buf, BytesMut, IntoBuf};
 use tokio::prelude::future::Either;
 use tokio_io::codec::{/*Encoder, */Decoder};
 
-type Result<T> = result::Result<T, Error>;
+type Result<T> = StdResult<T, Error>;
 
 #[derive(Debug)]
 pub enum Error {
@@ -153,7 +154,7 @@ impl Decoder for TftpClient {
     type Item = Result<Data>;
     type Error = io::Error;
 
-    fn decode(&mut self, buf: &mut BytesMut) -> result::Result<Option<Self::Item>, io::Error> {
+    fn decode(&mut self, buf: &mut BytesMut) -> StdResult<Option<Self::Item>, io::Error> {
         if self.received_end {
             return Ok(None);
         }
@@ -188,7 +189,7 @@ impl Decoder for TftpServer {
     type Item = Result<Request>;
     type Error = io::Error;
 
-    fn decode(&mut self, buf: &mut BytesMut) -> result::Result<Option<Self::Item>, io::Error> {
+    fn decode(&mut self, buf: &mut BytesMut) -> StdResult<Option<Self::Item>, io::Error> {
         match Packet::from_bytes(buf) {
             None => Ok(None),
             Some(res) => Ok(Some(res.and_then(Packet::into_request)))
