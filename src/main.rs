@@ -149,29 +149,55 @@ fn parse_error_body(buf: &mut BytesMut) -> Result<Packet, Error> {
     Err(Error::ClientErr { code, message })
 }
 
-struct Tftp {
+struct TftpClient {
     received_end: bool,
 }
 
-impl Tftp {
-    pub fn new() -> Tftp {
-        Tftp { received_end: false }
+impl TftpClient {
+    pub fn new() -> TftpClient {
+        TftpClient { received_end: false }
     }
 }
 
-impl Decoder for Tftp {
-    type Item = Result<Packet, Error>;
+impl Decoder for TftpClient {
+    type Item = Result<Data, Error>;
     type Error = io::Error;
 
     fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, io::Error> {
-        Ok(Packet::from_bytes(buf))
+        match Packet::from_bytes(buf) {
+            None => Ok(None),
+            Some(res) => {
+                let data = res.and_then(|packet| Packet::into_data(packet));
+                Ok(Some(data))
+            }
+        }
+    }
+}
+
+struct TftpServer {}
+
+impl TftpServer {
+    pub fn new() -> TftpServer {
+        TftpServer {}
+    }
+}
+
+impl Decoder for TftpServer {
+    type Item = Result<Request, Error>;
+    type Error = io::Error;
+
+    fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, io::Error> {
+        match Packet::from_bytes(buf) {
+            None => Ok(None),
+            Some(res) => Ok(Some(res.and_then(|packet| Packet::into_request(packet))))
+        }
     }
 }
 
 fn main() {
     let addr: SocketAddr = "0.0.0.0:69".parse().unwrap();
     let listener = UdpSocket::bind(&addr).unwrap();
-    let _stream = UdpFramed::new(listener, Tftp::new());
+    let _stream = UdpFramed::new(listener, TftpServer::new());
 
     tokio::run_async(async {
     });
