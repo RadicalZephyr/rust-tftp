@@ -105,10 +105,6 @@ impl Packet {
     }
 }
 
-fn is_zero_byte(b: &u8) -> bool {
-    *b == b'\0'
-}
-
 fn split_u16(buf: &mut BytesMut) -> u16 {
     assert!(buf.len() >= 2);
     let mut u16_buf = buf.split_to(2).into_buf();
@@ -118,7 +114,7 @@ fn split_u16(buf: &mut BytesMut) -> u16 {
 fn split_string(buf: &mut BytesMut) -> Result<String, Error> {
     let zero_index = buf.as_ref()
         .iter()
-        .position(is_zero_byte)
+        .position(|b| *b == b'\0')
         .ok_or(Error::MissingStringDelimiter)?;
     let str_buf = buf.split_to(zero_index);
     buf.advance(1);
@@ -201,7 +197,7 @@ impl Decoder for TftpServer {
     fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, io::Error> {
         match Packet::from_bytes(buf) {
             None => Ok(None),
-            Some(res) => Ok(Some(res.and_then(|packet| Packet::into_request(packet))))
+            Some(res) => Ok(Some(res.and_then(Packet::into_request)))
         }
     }
 }
