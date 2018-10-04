@@ -4,7 +4,7 @@
 // #[macro_use]
 // extern crate tokio;
 
-use std::io;
+use std::{io, result};
 use std::net::SocketAddr;
 
 use bytes::{Buf, BytesMut, IntoBuf};
@@ -13,6 +13,8 @@ use tokio::net::{UdpFramed, UdpSocket};
 // use tokio::prelude::*;
 use tokio::prelude::future::Either;
 use tokio_io::codec::{/*Encoder, */Decoder};
+
+type Result<T> = result::Result<T, Error>;
 
 #[derive(Debug)]
 enum Error {
@@ -59,21 +61,21 @@ enum Packet {
 }
 
 impl Packet {
-    pub fn into_request(self) -> Result<Request, Error> {
+    pub fn into_request(self) -> Result<Request> {
         match self {
             Packet::Request(request) => Ok(request),
             Packet::Data(data) => Err(Error::UnexpectedPacket(Either::B(data))),
         }
     }
 
-    pub fn into_data(self) -> Result<Data, Error> {
+    pub fn into_data(self) -> Result<Data> {
         match self {
             Packet::Request(request) => Err(Error::UnexpectedPacket(Either::A(request))),
             Packet::Data(data) => Ok(data),
         }
     }
 
-    pub fn from_bytes(buf: &mut BytesMut) -> Option<Result<Packet, Error>> {
+    pub fn from_bytes(buf: &mut BytesMut) -> Option<Result<Packet>> {
         if buf.len() <= 2 {
             return None;
         }
@@ -111,7 +113,7 @@ fn split_u16(buf: &mut BytesMut) -> u16 {
     u16_buf.get_u16_be() // TODO: figure out if this is the right byte order
 }
 
-fn split_string(buf: &mut BytesMut) -> Result<String, Error> {
+fn split_string(buf: &mut BytesMut) -> Result<String> {
     let zero_index = buf.as_ref()
         .iter()
         .position(|b| *b == b'\0')
@@ -122,24 +124,24 @@ fn split_string(buf: &mut BytesMut) -> Result<String, Error> {
     Ok(String::from_utf8_lossy(&str_buf).to_string())
 }
 
-fn parse_request_body(buf: &mut BytesMut) -> Result<RequestParts, Error> {
+fn parse_request_body(buf: &mut BytesMut) -> Result<RequestParts> {
     let filename = split_string(buf)?;
     let mode = split_string(buf)?;
     Ok(RequestParts { filename, mode })
 }
 
-fn parse_data_body(buf: &mut BytesMut) -> Result<Block, Error> {
+fn parse_data_body(buf: &mut BytesMut) -> Result<Block> {
     let block_num = split_u16(buf) as usize;
     let bytes = buf.take().to_vec();
     Ok(Block { block_num, bytes })
 }
 
-fn parse_ack_body(buf: &mut BytesMut) -> Result<Packet, Error> {
+fn parse_ack_body(buf: &mut BytesMut) -> Result<Packet> {
     let block_num = split_u16(buf);
     Ok(Packet::Data(Data::Ack(block_num as usize)))
 }
 
-fn parse_error_body(buf: &mut BytesMut) -> Result<Packet, Error> {
+fn parse_error_body(buf: &mut BytesMut) -> Result<Packet> {
     let code = split_u16(buf);
     let message = split_string(buf)?;
     Err(Error::ClientErr { code, message })
@@ -156,10 +158,10 @@ impl TftpClient {
 }
 
 impl Decoder for TftpClient {
-    type Item = Result<Data, Error>;
+    type Item = Result<Data>;
     type Error = io::Error;
 
-    fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, io::Error> {
+    fn decode(&mut self, buf: &mut BytesMut) -> result::Result<Option<Self::Item>, io::Error> {
         if self.received_end {
             return Ok(None);
         }
@@ -168,7 +170,7 @@ impl Decoder for TftpClient {
             None => Ok(None),
             Some(res) => {
                 let data = res.and_then(|packet| {
-                    let data_res: Result<Data, Error> = Packet::into_data(packet);
+                    let data_res: Result<Data> = Packet::into_data(packet);
                     data_res.map(|data: Data| {
                         if let Data::Data(block) = &data {
                             self.received_end = true;
@@ -191,10 +193,10 @@ impl TftpServer {
 }
 
 impl Decoder for TftpServer {
-    type Item = Result<Request, Error>;
+    type Item = Result<Request>;
     type Error = io::Error;
 
-    fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, io::Error> {
+    fn decode(&mut self, buf: &mut BytesMut) -> result::Result<Option<Self::Item>, io::Error> {
         match Packet::from_bytes(buf) {
             None => Ok(None),
             Some(res) => Ok(Some(res.and_then(Packet::into_request)))
