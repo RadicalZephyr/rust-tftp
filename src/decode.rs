@@ -3,17 +3,23 @@ use std::result::Result as StdResult;
 
 use bytes::{Buf, BytesMut, IntoBuf};
 
+use failure::Fail;
+
 // use tokio::prelude::*;
 use tokio::prelude::future::Either;
 use tokio_io::codec::{/*Encoder, */Decoder};
 
 type Result<T> = StdResult<T, Error>;
 
-#[derive(Debug)]
+#[derive(Debug, Fail)]
 pub enum Error {
+    #[fail(display = "client error: ({}) {}", code, message)]
     ClientErr { code: u16, message: String },
+    #[fail(display = "missing string delimiter")]
     MissingStringDelimiter,
+    #[fail(display = "unknown op-code")]
     UnknownOpcode,
+    #[fail(display = "unexpected packet type")]
     UnexpectedPacket(Either<Request, Data>),
 }
 
@@ -37,6 +43,10 @@ impl Request {
 
     pub fn r#type(&self) -> AccessType {
         self.r#type.clone()
+    }
+
+    pub fn filename(&self) -> &String {
+        &self.filename
     }
 }
 

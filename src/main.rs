@@ -1,14 +1,11 @@
 #![feature(await_macro, async_await, futures_api)]
 #![allow(dead_code, unused_variables)]
 
-use std::{
-    collections::HashMap,
-    net::SocketAddr,
-    path::PathBuf,
-    sync::{RwLock, RwLockReadGuard, RwLockWriteGuard, TryLockError},
-};
+use std::net::SocketAddr;
 
 use log::{error, info};
+
+use failure::Fail;
 
 use rand::prelude::*;
 
@@ -16,12 +13,27 @@ use tokio::await;
 use tokio::net::{UdpFramed, UdpSocket};
 use tokio::prelude::*;
 
-use tftp::TftpServer;
+use tftp::*;
 
+#[derive(Debug, Fail)]
 enum Error {
-    Poisoned,
-    ReadOrWriteLocked,
-    WriteLocked,
+    #[fail(display = "decode error")]
+    Decode(#[cause] DecodeError),
+
+    #[fail(display = "registry error")]
+    Registry(#[cause] RegistryError),
+}
+
+impl From<DecodeError> for Error {
+    fn from(error: DecodeError) -> Error {
+        Error::Decode(error)
+    }
+}
+
+impl From<RegistryError> for Error {
+    fn from(error: RegistryError) -> Error {
+        Error::Registry(error)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -50,47 +62,26 @@ impl Connection {
     }
 }
 
-struct ReadFile<'a>(RwLockReadGuard<'a, PathBuf>);
+fn handle_read(file: ReadFile) -> () {
 
-struct WriteFile<'a>(RwLockWriteGuard<'a, PathBuf>);
-
-struct FileRegistry {
-    root: PathBuf,
-    reg: HashMap<String, RwLock<PathBuf>>,
 }
 
-impl FileRegistry {
-    pub fn new() -> FileRegistry {
-        let root = PathBuf::from(".");
-        let reg = HashMap::new();
-        FileRegistry { root, reg }
-    }
+fn handle_write(file: WriteFile) -> () {
 
-    pub fn read_file(&mut self, filename: String) -> Result<ReadFile, Error> {
-        let try_lock = self.file_entry(filename).try_read();
-        match try_lock {
-            Err(TryLockError::Poisoned(_)) => Err(Error::Poisoned),
-            Err(TryLockError::WouldBlock) => Err(Error::WriteLocked),
-            Ok(lock) => Ok(ReadFile(lock)),
-        }
-    }
+}
 
-    pub fn write_file(&mut self, filename: String) -> Result<WriteFile, Error> {
-        let try_lock = self.file_entry(filename).try_write();
-        match try_lock {
-            Err(TryLockError::Poisoned(_)) => Err(Error::Poisoned),
-            Err(TryLockError::WouldBlock) => Err(Error::ReadOrWriteLocked),
-            Ok(lock) => Ok(WriteFile(lock)),
-        }
+fn handle_request(registry: &mut FileRegistry, request: Result<Request, DecodeError>) -> Result<(), Error> {
+    let request = request?;
+    info!("{:?}", request);
+    match request.r#type() {
+        AccessType::Read => {
+            handle_read(registry.read_file(request.filename())?);
+        },
+        AccessType::Write => {
+            handle_write(registry.write_file(request.filename())?);
+        },
     }
-
-    fn file_entry(&mut self, filename: String) -> &mut RwLock<PathBuf> {
-        let path = PathBuf::from(&filename);
-        let full_path = self.root.join(path);
-        self.reg.entry(filename).or_insert_with(move || {
-            RwLock::new(full_path)
-        })
-    }
+    Ok(())
 }
 
 fn main() {
@@ -98,15 +89,12 @@ fn main() {
         let addr: SocketAddr = "0.0.0.0:69".parse().unwrap();
         let listener = UdpSocket::bind(&addr).unwrap();
         let mut stream = UdpFramed::new(listener, TftpServer::new());
+        let mut registry = FileRegistry::new();
 
-        while let Some(Ok((packet, addr))) = await!(stream.next()) {
-            match packet {
-                Err(e) => error!("{:?}", e),
-                Ok(request) => {
-                    info!("{:?}", request);
-                    let conn = Connection::new(&addr);
-
-                }
+        while let Some(Ok((request, addr))) = await!(stream.next()) {
+            match handle_request(&mut registry, request) {
+                Err(e) => error!("error: {}", e),
+                Ok(()) => (),
             }
         }
     });
