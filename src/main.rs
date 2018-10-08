@@ -62,9 +62,10 @@ impl Connection {
 }
 
 fn handle_read(conn: Connection, file: ReadFile) -> () {
+    let listener = UdpSocket::bind(&conn.client_addr).unwrap();
+    let mut stream = UdpFramed::new(listener, TftpClient::new());
+
     tokio::run_async(async move {
-        let listener = UdpSocket::bind(&conn.client_addr).unwrap();
-        let mut stream = UdpFramed::new(listener, TftpClient::new());
         while let Some(Ok((request, addr))) = await!(stream.next()) {
 
         }
@@ -72,9 +73,10 @@ fn handle_read(conn: Connection, file: ReadFile) -> () {
 }
 
 fn handle_write(conn: Connection, file: WriteFile) -> () {
+    let listener = UdpSocket::bind(&conn.client_addr).unwrap();
+    let mut stream = UdpFramed::new(listener, TftpClient::new());
+
     tokio::run_async(async move {
-        let listener = UdpSocket::bind(&conn.client_addr).unwrap();
-        let mut stream = UdpFramed::new(listener, TftpClient::new());
         while let Some(Ok((request, addr))) = await!(stream.next()) {
 
         }
@@ -98,12 +100,12 @@ fn handle_request(registry: &mut FileRegistry, addr: SocketAddr, request: Result
 }
 
 fn main() {
-    tokio::run_async(async {
-        let addr: SocketAddr = "0.0.0.0:69".parse().unwrap();
-        let listener = UdpSocket::bind(&addr).unwrap();
-        let mut stream = UdpFramed::new(listener, TftpServer::new());
-        let mut registry = FileRegistry::new();
+    let addr: SocketAddr = "0.0.0.0:69".parse().unwrap();
+    let listener = UdpSocket::bind(&addr).unwrap();
+    let mut stream = UdpFramed::new(listener, TftpServer::new());
+    let mut registry = FileRegistry::new();
 
+    tokio::run_async(async move {
         while let Some(Ok((request, addr))) = await!(stream.next()) {
             match handle_request(&mut registry, addr, request) {
                 Err(e) => error!("error: {}", e),
