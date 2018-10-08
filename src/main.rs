@@ -62,23 +62,25 @@ impl Connection {
     }
 }
 
-fn handle_read(file: ReadFile) -> () {
+fn handle_read(conn: Connection, file: ReadFile) -> () {
 
 }
 
-fn handle_write(file: WriteFile) -> () {
+fn handle_write(conn: Connection, file: WriteFile) -> () {
 
 }
 
-fn handle_request(registry: &mut FileRegistry, request: Result<Request, DecodeError>) -> Result<(), Error> {
+fn handle_request(registry: &mut FileRegistry, addr: SocketAddr, request: Result<Request, DecodeError>) -> Result<(), Error> {
     let request = request?;
     info!("{:?}", request);
+    let connection = Connection::new(&addr);
+
     match request.r#type() {
         AccessType::Read => {
-            handle_read(registry.read_file(request.filename())?);
+            handle_read(connection, registry.read_file(request.filename())?);
         },
         AccessType::Write => {
-            handle_write(registry.write_file(request.filename())?);
+            handle_write(connection, registry.write_file(request.filename())?);
         },
     }
     Ok(())
@@ -92,7 +94,7 @@ fn main() {
         let mut registry = FileRegistry::new();
 
         while let Some(Ok((request, addr))) = await!(stream.next()) {
-            match handle_request(&mut registry, request) {
+            match handle_request(&mut registry, addr, request) {
                 Err(e) => error!("error: {}", e),
                 Ok(()) => (),
             }
